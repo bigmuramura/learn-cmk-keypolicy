@@ -1,0 +1,156 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: ""
+
+Parameters:
+  ProjectName:
+    Description: Project Name
+    Type: String
+    Default: unnamed
+  Environment:
+    Description: Environment
+    Type: String
+    Default: dev
+    AllowedValues:
+      - prod
+      - dev
+      - stg
+
+Resources:
+  # -------
+  # KMS
+  # -------
+  CMK1:
+    Type: "AWS::KMS::Key"
+    Properties:
+      Description: Learn KMS CMK Key Policy
+      EnableKeyRotation: true
+      PendingWindowInDays: 7
+      KeyUsage: "ENCRYPT_DECRYPT"
+      KeyPolicy:
+        Version: 2012-10-17
+        Id: key-default-1
+        Statement:
+          - Sid: Enable IAM User Permissions
+            Effect: Allow
+            Principal:
+              AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
+            Action: "kms:*"
+            Resource: "*"
+  CMK1Alias:
+    Type: "AWS::KMS::Alias"
+    Properties:
+      AliasName: !Sub alias/${ProjectName}-${Environment}-cmk
+      TargetKeyId: !Ref CMK1
+
+  # -------
+  # S3
+  # -------
+  Bucket1:
+    Type: "AWS::S3::Bucket"
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: "aws:kms"
+              KMSMasterKeyID: !GetAtt CMK1.Arn
+            BucketKeyEnabled: true
+      BucketName: !Sub ${ProjectName}-${Environment}-blog-bucket
+      AccessControl: "Private"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: "Enabled"
+
+  # -------
+  # IAM Role
+  # -------
+  # IAM Role
+  IAMRole1:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${Environment}-${ProjectName}-ec2-role1
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service:
+                - "ec2.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+      Path: "/"
+      ManagedPolicyArns:
+        - !Ref IAMPolicy1
+      Tags:
+        - Key: Name
+          Value: !Sub ${Environment}-${ProjectName}-ec2-role1
+  ## Instance Profile
+  InstanceProfile1:
+    Type: "AWS::IAM::InstanceProfile"
+    Properties:
+      InstanceProfileName: !Sub ${Environment}-${ProjectName}-ec2-role1
+      Path: "/"
+      Roles:
+        - Ref: IAMRole1
+  ## IAM Policy
+  IAMPolicy1:
+    Type: "AWS::IAM::ManagedPolicy"
+    Properties:
+      ManagedPolicyName: !Sub ${Environment}-${ProjectName}-ec2-policy1
+      Path: "/"
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: "SamplePolicy"
+            Effect: "Allow"
+            Action:
+              - "kms:Decrypt"
+              - "kms:Encrypt"
+              - "kms:GenerateDataKey"
+              - "kms:DescribeKey"
+              - "kms:ReEncrypt*"
+            Resource: !GetAtt CMK1.Arn
+          - Effect: "Allow"
+            Action:
+              - "s3:ListBucket"
+              - "s3:ListBucketVersions"
+              - "s3:GetObject"
+              - "s3:GetObjectVersion"
+              - "s3:DeleteObject"
+              - "s3:DeleteObjectVersion"
+              - "s3:PutObject"
+            Resource:
+              - !GetAtt Bucket1.Arn
+              - !Sub ${Bucket1.Arn}/*
+
+  # IAM Role
+  IAMRole2:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${Environment}-${ProjectName}-ec2-role2
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service:
+                - "ec2.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+      Path: "/"
+      ManagedPolicyArns:
+        - !Ref IAMPolicy1
+      Tags:
+        - Key: Name
+          Value: !Sub ${Environment}-${ProjectName}-ec2-role2
+  ## Instance Profile
+  InstanceProfile2:
+    Type: "AWS::IAM::InstanceProfile"
+    Properties:
+      InstanceProfileName: !Sub ${Environment}-${ProjectName}-ec2-role2
+      Path: "/"
+      Roles:
+        - Ref: IAMRole2
